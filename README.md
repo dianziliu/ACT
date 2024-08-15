@@ -21,27 +21,31 @@ Since it is infeasible to train Transformer on large graphs, we designed an aspe
 1. File Structure
 
 ```
-.\amazon_data [training data]  
-.\sim_res  [save the similarity matrixs]  
-.\similarity  [similarity measures]  
-.\untils  [some tools to papre training data]  
+.\data [datasets]  
+.\AspectExtration  [code for extracting asepct from datasets]  
 .\src  
 ```
 
-2. calculate user similarities and item similarities in three levels
+1. extract aspects
 
 ```sh
-sudo python src/get_review_sim.py  
-sudo python src/get_user_sim.py
+python AspectExtraction/1_aspext_extractor.py
+python AspectExtraction/2_aspect_merge.py
+python AspectExtraction/3_aspect_filter.py
+python AspectExtraction/4_aspect_sentiment.py
 ```
 
 > [Note!] We use seta to calculate the review sentiment scores.  
 > The package of seta need to used at root user. 
 
+
+
 3. training the model
 
 ```sh
-python src/main.py
+python src/data_process.py
+python src/data_gp.py
+python src/train.py
 ```
 
 
