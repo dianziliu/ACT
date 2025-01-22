@@ -10,7 +10,7 @@ ACT
 
 
 
-Repo for a under review paper of AAAI 2025: [ACT: Exploring Aspect Terms and Categories for
+Repo for a under review paper of SIGIR 2025: [ACT: Exploring Aspect Terms and Categories for
 Transformer-based Recommendationtion]
 
 ## 1. Introduction✨
