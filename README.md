@@ -10,11 +10,15 @@ Aspectormer
 
 
 
-Repo for a under review paper of AAAI 2025: [A Graph Transformer Approach for Aspect-based Recommendation]
+Repo for a under review paper of AAAI 2025: [ACT: Exploring Aspect Terms and Categories for
+Transformer-based Recommendationtion]
 
 ## 1. Introduction✨
-User-generated reviews often contain certain key aspects of many items and are particularly important for understanding users' shopping interests. Recent recommendation methods build aspect graphs based on reviews and then utilize graph neural networks to embed user preferences. However, different users may choose different words or phrases to describe a certain aspect of an item, resulting in a sparse aspect graph, which hinders the information propagation between nodes in the graph. In this paper, we propose an Aspect Graph Transformer (Aspectormer) for aspect-based recommendation, which employs a Transformer to learn global structure features from aspect graphs, reducing the impact of the sparsity of the graph.
-Since it is infeasible to train Transformer on large graphs, we designed an aspect filter to select a subset of aspects from the entire set for each user and item to participate in training. At the same time, the aspect filter generates a score for each aspect, which is combined with the attention mechanism in the Transformer to integrate user preferences in the learning process. Experiments on five real-world datasets demonstrate that the predictions of Aspectormer significantly outperform SOTA baselines by $2.84\%$ and $2.36\%$ in MSE and MAE, respectively. More importantly, Aspectormer can help to discover aspects of potential concern to users.
+ser-generated reviews often contain certain key aspects of many items and are particularly important for understanding users’ shopping interests. Recent recommendation methods utilize aspect graphs to represent the relationships between users and aspects and then apply graph neural networks to embed user preferences. However,
+different users may choose different words or phrases to describe a certain aspect of an item, resulting in a sparse aspect graph. The sparse graph hinders the information propagation between users and aspects and fails to explore the user interest in potential aspects. In this paper, we propose an Aspect Category Transformer (ACT) for the aspect-based recommendation, which explores the feasibility of replacing GNNs with a more powerful Transformer
+architecture to capture interactions between users, items, and aspects. Since it is infeasible to train Transformer on large graphs, we first design an aspect filter to select a comprehensive set of explicitly mentioned and implicitly relevant aspects from the entire set for each user and item. Then, considering aspect categories refer
+to the categories that aspect terms belong to and usually have a small range, we introduce aspect categories into the Transformer, enabling the model to further capture relationships between aspect terms and broader contextual information. Finally, through the aspect filter and the aspect category-enhanced Transformer, ACT extends user preference from their interacted aspects to non-interacted but potentially interesting aspects. Experiments on five
+real-world datasets demonstrate that the predictions of ACT significantly outperform SOTA baselines by 2.84% and 2.36% in MSEand MAE, respectively. 
 
 ## 2. Quick Start🚀
 
