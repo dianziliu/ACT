@@ -4,10 +4,9 @@ import torch.nn.init as init
 from torch_geometric.data import Data
 import torch_geometric.data as gda
 from torch_geometric.nn import global_mean_pool as gmp,GCNConv,GATConv
-from layer import GraphPool
-# from layer import GAT
-from layer import GAT2
-from layer2 import MultiHeadPreferenceTransformer
+from torch.nn import TransformerEncoder,TransformerEncoderLayer
+
+
 from collections import defaultdict
 import pandas as pd
 
@@ -21,35 +20,33 @@ def gpu(batch, is_long=True,cuda=True):
         batch = batch.cuda()
     return batch
 
-class AGT(nn.Module):
-    def __init__(self, config, args,edge2idx,uap,iap,to_gpu=True):
+class ACG(nn.Module):
+    def __init__(self, data_loader, args,pre_train_emb,user_aspect_seq,item_aspect_sqe,at2ac,to_gpu=True):
         super().__init__()
         self.args = args
-        self.user_embedding = nn.Embedding(config['n_users'], args.dim)
-        self.item_embedding = nn.Embedding(config['n_items'], args.dim)
-        self.word_embedding = nn.Embedding(config['n_words'], args.word_dim)
-        self.idx2edge       = edge2idx
-        self.uap    = uap
-        self.iap    = iap
-        self.to_gpu = to_gpu
+        self.device = t.device('cuda' if to_gpu else 'cpu')
+        self.data_loader = data_loader
+        self.user_embedding = nn.Embedding(data_loader.n_users, args.dim)
+        self.item_embedding = nn.Embedding(data_loader.n_items, args.dim)
+        self.item_start = data_loader.n_users
+        self.word_start=data_loader.n_users+data_loader.n_items
+        # self.word_embedding = nn.Embedding(data_loader.n_words, args.word_dim)
+    
+        self.word_embedding = nn.Embedding(data_loader.word_num+100, args.word_dim)
+
+        self.word_embedding.weight.data[:pre_train_emb.shape[0]] = t.tensor(pre_train_emb).to(self.device)
+
+        self.user_aspect = gpu(user_aspect_seq,cuda=to_gpu)
+        self.item_aspect = gpu(item_aspect_sqe,cuda=to_gpu)
+
         MAX_num_relations=8
 
-        # 卷积层
-        # self.GATs = nn.ModuleList(
-        #     [GAT(args.word_dim, args.hidd_dim, MAX_num_relations,self.word_embedding,self.idx2edge)])
-        # self.GATs =nn.ModuleList(
-        #     [GCNConv(args.word_dim, args.hidd_dim)])
-        self.GATs =nn.ModuleList(
-            [GATConv(args.word_dim, args.hidd_dim)])
+        self.linear = nn.Linear(2*args.word_dim,args.hidd_dim)
+        self.gt = TransformerEncoder(
+                    TransformerEncoderLayer(args.hidd_dim,args.num_head,batch_first=True) ,3
+                )
         
-        self.GT=MultiHeadPreferenceTransformer(args.word_dim,args.K,args.num_head)
-        self.word_start=config['n_users']+config['n_items']
-        self.aspect_idx=list(range(self.word_start,config['n_words']))
-
-        # 
-        for _ in range(args.num_layers - 1):
-            self.GATs.append(
-                GATConv(args.word_dim, args.hidd_dim))
+        
 
         self.trans_u = nn.ModuleList(
             [nn.Linear(args.dim, args.hidd_dim) for _ in range(args.num_layers)])
@@ -62,20 +59,18 @@ class AGT(nn.Module):
         
         self.interaction_u = nn.Linear(args.dim, args.dim)
         self.interaction_i = nn.Linear(args.dim, args.dim)
-        self.fm2 = FM_Layer(args, config)
-        self.pool = GraphPool(args.hidd_dim,args.alpha)
-        self.Batch = gda.Batch()
-        self.Dropout = nn.Dropout(args.dropout)
-        init.xavier_uniform_(self.user_embedding.weight,0.1)
-        init.xavier_uniform_(self.item_embedding.weight,0.1)
-        init.xavier_uniform_(self.word_embedding.weight,0.1) 
+        self.fm2 = FM_Layer(args,data_loader)
+
+        # 
+        init.xavier_uniform_(self.user_embedding.weight,.1)
+        init.xavier_uniform_(self.item_embedding.weight,.1)
+        init.xavier_uniform_(self.linear.weight,.1)
 
         
-        self.edge2idx=edge2idx
 
 
-    def forward(self, uid_batch, iid_batch, batch_nodes, batch_edges,
-                batch_edge_type,batch_idx,
+
+    def forward(self, uid_batch, iid_batch,
                 sig,store_file):
         
         # u_adj_ind -- index
@@ -86,23 +81,30 @@ class AGT(nn.Module):
         self.i_e = self.item_embedding(iid_batch)
 
 
-        # graph_x=self.word_embedding(batch_nodes)
-        graph_data=Data(x=self.word_embedding.weight,edge_index=batch_edges,edge_attr=batch_edge_type)
-        # 3. 对 u、i的隐向量进行映射
-        # u_em = [t.relu(self.trans_u[i](self.u_e))
-        #         for i in range(self.args.num_layers)]
-        # i_em = [t.relu(self.trans_i[i](self.i_e))
-        #         for i in range(self.args.num_layers)]
-        
-        u_pool_e,i_pool_e=self.conv_pool(uid_batch,iid_batch,self.u_e,self.i_e,graph_data,
-                                         batch_idx,sig)
-        
+        user_nodes = self.word_embedding(uid_batch.unsqueeze(1))
+        item_nodes = self.word_embedding((iid_batch+self.item_start).unsqueeze(1))
 
-        
 
+        user_at_ac_seq = self.word_embedding(self.user_aspect[uid_batch])
+        item_at_ac_seq = self.word_embedding(self.item_aspect[iid_batch])
+
+        user_at_ac_seq = self.linear(t.flatten(user_at_ac_seq,start_dim=-2))
+        item_at_ac_seq = self.linear(t.flatten(item_at_ac_seq,start_dim=-2))
+
+
+        user_aspects_embs = t.concat([user_nodes,user_at_ac_seq],dim=1)
+        item_aspects_embs = t.concat([item_nodes,item_at_ac_seq],dim=1)
+
+
+        user_aspects_embs = self.gt(user_aspects_embs)
+        item_aspects_embs = self.gt(item_aspects_embs)
+
+
+        u_pool_e = user_aspects_embs[:,0]
+        i_pool_e = item_aspects_embs[:,0]
         # 对应公式（9）
-        user_rep = t.relu(self.interaction_u(self.u_e))
-        item_rep = t.relu(self.interaction_i(self.i_e))
+        user_rep = self.interaction_u(self.u_e)
+        item_rep = self.interaction_i(self.i_e)
         # 
         user_vc = t.cat((user_rep, u_pool_e), -1)
         item_vc = t.cat((item_rep, i_pool_e), -1)
@@ -110,31 +112,11 @@ class AGT(nn.Module):
         pre_rate = self.fm2(user_vc, item_vc, uid_batch, iid_batch)
         return pre_rate
 
-    def conv_pool(self, uid_batch,iid_batch,
-                  u_em,i_em, graph,batch_idx,sig):
-        """
-            图方面的计算逻辑在这块
-        """
-        review_e, edge_index, edge_attr = graph.x, graph.edge_index, graph.edge_attr
-        # 1. 图卷积
-        for i in range(self.args.num_layers):
-            
-            # review_e= self.GATs[i](
-            #     review_e, batch_idx, edge_index, edge_attr)
-            review_e= self.GATs[i](review_e, edge_index)
-        # 2. GT
-        uap=gpu(self.uap[uid_batch.cpu()],cuda=self.to_gpu)
-        iap=gpu(self.iap[iid_batch.cpu()],cuda=self.to_gpu)
-        out_u=self.GT(review_e[self.aspect_idx],u_em,self.word_embedding(uid_batch),uap)
-        out_i=self.GT(review_e[self.aspect_idx],i_em,self.word_embedding(iid_batch),iap)
-
-        return out_u,out_i
-
     def get_alphas(self):
         return self.alphas
 
 class FM_Layer(nn.Module):
-    def __init__(self, args, config):
+    def __init__(self, args, data_loader) -> None:
         super(FM_Layer, self).__init__()
         # input_dim = (args.num_layers + 1) * args.dim * 2
         input_dim   =args.word_dim*4
@@ -143,17 +125,18 @@ class FM_Layer(nn.Module):
         self.V = nn.Parameter(
             t.zeros(input_dim, input_dim), requires_grad=True)
         self.bias_u = nn.Parameter(
-            t.zeros(config['n_users'], requires_grad=True))
+            t.zeros(data_loader.n_users, requires_grad=True))
         self.bias_i = nn.Parameter(
-            t.zeros(config['n_items'], requires_grad=True))
-        self.bias = nn.Parameter(t.ones(1)*3)
+            t.zeros(data_loader.n_items, requires_grad=True))
+        self.bias = nn.Parameter(t.ones(1)*args.bias)
+
         ### MI: 4.2 Train=False
 
         init.xavier_uniform_(self.V.data,0.1)
 
     def fm_layer(self, user_em, item_em, uid, iid):
         # linear_part: batch * 1 * input_dim
-        x = 0.01* t.cat((user_em, item_em), -1).unsqueeze(1)
+        x = 0.1 * t.cat((user_em, item_em), -1).unsqueeze(1)
         linear_part = self.linear(x).squeeze()
         batch_size = len(x)
         V = t.stack((self.V,) * batch_size)
@@ -164,13 +147,43 @@ class FM_Layer(nn.Module):
         mlp_output = 0.5 * \
             t.sum((interaction_part_1 - interaction_part_2).squeeze(1), -1)
         rate = linear_part + mlp_output + \
-            self.bias_u[uid] + self.bias_i[iid] + self.bias
+            self.bias_u[uid] + self.bias_i[iid] +  self.bias
         # rate = linear_part + mlp_output + self.bias
+        
         return rate
 
     def forward(self, user_em, item_em, uid, iid):
         return self.fm_layer(user_em, item_em, uid, iid).view(-1)
+        # return self.ncf_layer(user_em,item_em,uid,iid).view(-1)
 
+
+
+class NCF_Layer(nn.Module):
+    def __init__(self, args, config):
+        super(NCF_Layer, self).__init__()
+        self.user_embedding =nn.Embedding(config['n_users'],args.word_dim)
+        self.item_embedding =nn.Embedding(config['n_items'],args.word_dim)
+        self.linear= nn.Linear(3*args.word_dim,1)
+        self.linear2= nn.Linear(4*args.word_dim,args.word_dim,bias=False)
+        ### MI: 4.2 Train=False
+
+        init.normal_(self.user_embedding.weight,.0,.1)
+        init.normal_(self.item_embedding.weight,.0,.1)
+        init.normal_(self.linear.weight,.0,.1)
+
+
+    def ncf_layer(self,user_em,item_em,uid,iid):
+        x =  t.cat((user_em, item_em), -1)
+        x = self.linear2(x) 
+        x = t.cat([self.user_embedding(uid),
+                   self.item_embedding(iid),
+                   x],-1)
+        rate = self.linear(x)
+        return rate
+
+
+    def forward(self, user_em, item_em, uid, iid):
+        return self.ncf_layer(user_em,item_em,uid,iid).view(-1)
 
 
 def store_res(file, uid_batch, iid_batch, 

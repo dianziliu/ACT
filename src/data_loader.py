@@ -27,7 +27,7 @@ class GraphData():
     def __init__(self, args):
         # self.path = args.path
         # self.path = '../data/' + args.dataset + '/'
-        self.path="data4/"+args.dataset + '/'
+        self.path="tmp_data/data_ac3/"+args.dataset + '/'
         self.args = args
         #wsss
         train_file       = self.path + 'data.train'
@@ -71,6 +71,10 @@ class GraphData():
         self.train_length = self.para_data['train_length']
         self.eval_length  = self.para_data['eval_length']
         self.test_length  = self.para_data['test_length']
+        #
+        self.ac2idx = self.para_data['ac2idx']
+        self.at2ac  = self.para_data['at2ac'][self.n_users+ self.n_items:]
+
 
 
     def generate_batch(self, data_type='train'):
@@ -97,71 +101,12 @@ class GraphData():
             end_index = min((batch_num + 1) * self.args.batch_size, len(data))     
             batch_data = data[start_index:end_index]
             uid_batch, iid_batch, rate_batch = zip(*batch_data)
-
-            # 2. 备份数据       
-            if data_type not in self.input_datas:
-                self.input_datas[data_type]={}
-            if batch_num not in self.input_datas[data_type]:
-                # uid_batch, iid_batch, rate_batch=batch[:,0],batch[:,1],batch[:,2]
-                # 整理nodes，edges,edge_type
-                u_nodes, i_nodes = [], []
-                u_adj_ind, i_adj_ind = [], []
-                u_edge_type, i_edge_type = [], []
-                last_u=1
-                batch_nodes=[]
-                batch_edges=[]
-                batch_edge_type=[]
-                batch=[]
-                batch_idx=0
-                for i, user in enumerate(uid_batch):
-                    if user not in self.u_graphs:
-                        user=last_u
-                    adj_ind, adj_val, node_index = self.u_graphs[user]
-                    u_adj_ind.append(adj_ind)
-                    u_nodes.append(node_index)
-                    u_edge_type.append(adj_val)
-                    batch_nodes.extend(node_index)
-                    batch.extend([batch_idx]*len(adj_val))
-                    batch_edges.extend(adj_ind)
-                    batch_edge_type.extend(adj_val)
-                    batch_idx+=1
-                last_i=1
-                for i, item in enumerate(iid_batch):
-                    if item not in self.i_graphs:
-                        item=last_i
-                    adj_ind, adj_val, node_index = self.i_graphs[item]
-                    i_adj_ind.append(adj_ind)
-                    i_nodes.append(node_index)
-                    i_edge_type.append(adj_val)
-                    batch_nodes.extend(node_index)
-                    batch.extend([batch_idx]*len(adj_val))
-                    batch_edges.extend(adj_ind)
-                    batch_edge_type.extend(adj_val)
-
-                    batch_idx+=1
-                # 去重
-                batch_nodes=list(set(batch_nodes))
-                batch_edges=np.array(batch_edges)
-                # if check_mem():
-                #     uid_batch       = gpu(uid_batch)
-                #     iid_batch       = gpu(iid_batch)
-                #     rate_batch      = gpu(rate_batch, is_long=False)
-                #     batch_nodes     = gpu(batch_nodes)
-                #     batch_edges     = gpu(batch_edges)
-                #     batch_edge_type = gpu(batch_edge_type)
-                #     batch           = gpu(batch)
-                 # 这一步会消耗大量的内存
-                self.input_datas[data_type][batch_num]=(batch_nodes, batch_edges,batch_edge_type,batch)           
-            # batch_edges=np.array(batch_edges)
-            batch_nodes, batch_edges,batch_edge_type,batch=self.input_datas[data_type][batch_num]
-
-
-            yield uid_batch, iid_batch, rate_batch, batch_nodes, batch_edges,batch_edge_type,batch
+            yield uid_batch,iid_batch,rate_batch
 
 
     def build_aspect_fre(self):
         user_fre=np.zeros([self.n_users,len(self.word2id)])
-        item_fre=np.zeros([self.n_users,len(self.word2id)])
+        item_fre=np.zeros([self.n_items,len(self.word2id)])
         offset=self.n_users+self.n_items
         # 
         for user, (adj_ind, adj_val, node_index) in self.u_graphs.items():
@@ -179,6 +124,79 @@ class GraphData():
         self.user_fre=user_fre
         self.item_fre=item_fre
         return user_fre,item_fre
+
+
+    def generate_a_data(self, data_type='train'):
+        
+        # if data_type == 'train':
+        #     np.random.shuffle(self.train_data)
+        #     data = self.train_data
+        # elif data_type == 'eval':
+        #     data = self.eval_data
+        # elif data_type == 'test':
+        #     data = self.test_data
+        # else:
+        #     sys.exit()
+        data = self.test_data
+
+        # shuffle(data)
+        for batch_num in range(len(data)):
+            # 1. 数据分批
+            start_index = batch_num 
+            if start_index >= len(data):
+                continue
+            end_index = batch_num+1
+            batch_data = data[start_index:end_index]
+            uid_batch, iid_batch, rate_batch = zip(*batch_data)
+            if uid_batch[0]!=497 or iid_batch[0]!=504:
+                continue
+            # 2. 备份数据       
+            # if data_type not in self.input_datas:
+            #     self.input_datas[data_type]={}
+            # if batch_num not in self.input_datas[data_type]:
+            # uid_batch, iid_batch, rate_batch=batch[:,0],batch[:,1],batch[:,2]
+            # 整理nodes，edges,edge_type
+            u_nodes, i_nodes = [], []
+            u_adj_ind, i_adj_ind = [], []
+            u_edge_type, i_edge_type = [], []
+            last_u=1
+            batch_nodes=[]
+            batch_edges=[]
+            batch_edge_type=[]
+            batch=[]
+            batch_idx=0
+            for i, user in enumerate(uid_batch):
+                if user not in self.u_graphs:
+                    user=last_u
+                adj_ind, adj_val, node_index = self.u_graphs[user]
+                u_adj_ind.append(adj_ind)
+                u_nodes.append(node_index)
+                u_edge_type.append(adj_val)
+                batch_nodes.extend(node_index)
+                batch.extend([batch_idx]*len(adj_val))
+                batch_edges.extend(adj_ind)
+                batch_edge_type.extend(adj_val)
+                batch_idx+=1
+            last_i=1
+            for i, item in enumerate(iid_batch):
+                if item not in self.i_graphs:
+                    item=last_i
+                adj_ind, adj_val, node_index = self.i_graphs[item]
+                i_adj_ind.append(adj_ind)
+                i_nodes.append(node_index)
+                i_edge_type.append(adj_val)
+                batch_nodes.extend(node_index)
+                batch.extend([batch_idx]*len(adj_val))
+                batch_edges.extend(adj_ind)
+                batch_edge_type.extend(adj_val)
+
+                batch_idx+=1
+            # 去重
+            batch_nodes=list(set(batch_nodes))
+            batch_edges=np.array(batch_edges)
+
+            yield uid_batch, iid_batch, rate_batch, batch_nodes, batch_edges,batch_edge_type,batch
+
 def check_mem(N=20):
     # 获取当前使用的GPU索引
     current_gpu_index = t.cuda.current_device()
