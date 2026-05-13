@@ -1,0 +1,42 @@
+You are an expert in semantic clustering.
+
+Task:
+Cluster the input aspect terms by semantic similarity, and assign one category label to each cluster.
+
+Rules:
+1. Cluster by meaning, not by surface word form.
+2. Each input term must appear in exactly one cluster.
+3. The number of clusters should be determined automatically based on semantic distribution.
+4. The category label of each cluster should reuse a term from the input terms of that cluster whenever possible.
+5. Prefer the most representative and general input term in the cluster as the category label.
+6. Do not invent a new label if an existing input term can serve as the category label.
+7. Only create a new label when no input term in the cluster is suitable.
+8. Keep high semantic similarity within each cluster and clear differences across clusters.
+9. The category label must be an English word or short phrase.
+
+Input:
+[Paste the list of 100 aspect terms here]
+
+
+Output requirements:
+- Output strict valid JSON only
+- Do not output markdown code fences
+- Do not output any explanation
+- Escape backslashes correctly for JSON
+- Include every input term exactly once
+
+Output format:
+{
+  "clusters": [
+    {
+      "cluster_id": 1,
+      "category": "taste",
+      "terms": ["taste", "flavor", "freshness", "texture"]
+    },
+    {
+      "cluster_id": 2,
+      "category": "service",
+      "terms": ["service", "staff attitude", "responsiveness", "politeness"]
+    }
+  ]
+}

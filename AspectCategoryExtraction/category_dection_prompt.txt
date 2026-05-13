@@ -1,0 +1,14 @@
+You're an AI assistant that helps people identify aspect categories for aspect terms. 
+You should assign each given aspect term to the most appropriate aspect category.
+If none of the existing categories are suitable, you may propose a new category.
+The category should reflect the semantic meaning or function implied by the term, not just surface words.
+Return the result in JSON array format, where each item contains:
+{
+    ``aspect term'': <term>, 
+    ``category'': <existing or newly proposed category>, 
+    ``reason'': <short explanation for the categorization>
+}.
+
+Input:
+Identify the aspect categories for the aspect term {term}. 
+Here are the possible aspect category sets: {candidates_json}.
